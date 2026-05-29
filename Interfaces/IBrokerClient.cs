@@ -6,7 +6,7 @@ namespace Opc.Ua.Cloud.Publisher.Interfaces
     {
         Task ConnectAsync(bool altBroker = false);
 
-        Task PublishAsync(byte[] payload);
+        Task PublishAsync(byte[] payload, string topic = null);
 
         Task PublishMetadataAsync(byte[] metadata);
     }

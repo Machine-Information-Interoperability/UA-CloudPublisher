@@ -117,7 +117,7 @@ namespace Opc.Ua.Cloud.Publisher
                 if (selectedEndpoint == null)
                 {
                     // use a discovery client to connect to the server and discover all its endpoints, then pick the one with the highest security
-                    selectedEndpoint = await CoreClientUtils.SelectEndpointAsync(_app.UAApplicationInstance.ApplicationConfiguration, endpointUrl, true, _app.Telemetry).ConfigureAwait(false);
+                    selectedEndpoint = await CoreClientUtils.SelectEndpointAsync(_app.UAApplicationInstance.ApplicationConfiguration, endpointUrl, false, _app.Telemetry).ConfigureAwait(false);
 
                     // add to cache (double-check pattern to handle race conditions)
                     lock (_endpointDescriptionCacheLock)
@@ -219,11 +219,11 @@ namespace Opc.Ua.Cloud.Publisher
                     throw new ServiceResultException(StatusCodes.BadTimeout, "Waiting for a reverse connection timed out after 30 seconds.");
                 }
 
-                selectedEndpoint = await CoreClientUtils.SelectEndpointAsync(_app.UAApplicationInstance.ApplicationConfiguration, connection, true, _app.Telemetry).ConfigureAwait(false);
+                selectedEndpoint = await CoreClientUtils.SelectEndpointAsync(_app.UAApplicationInstance.ApplicationConfiguration, connection, false, _app.Telemetry).ConfigureAwait(false);
             }
             else
             {
-                selectedEndpoint = await CoreClientUtils.SelectEndpointAsync(_app.UAApplicationInstance.ApplicationConfiguration, endpointUrl, true, _app.Telemetry).ConfigureAwait(false);
+                selectedEndpoint = await CoreClientUtils.SelectEndpointAsync(_app.UAApplicationInstance.ApplicationConfiguration, endpointUrl, false, _app.Telemetry).ConfigureAwait(false);
             }
 
             ConfiguredEndpoint configuredEndpoint = new ConfiguredEndpoint(null, selectedEndpoint, EndpointConfiguration.Create(_app.UAApplicationInstance.ApplicationConfiguration));

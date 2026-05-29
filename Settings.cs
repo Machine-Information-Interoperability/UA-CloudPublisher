@@ -190,6 +190,8 @@
 
         public bool AutoLoadPersistedNodes { get; set; } = false;
 
+        public bool EnableMultiTopicPublishing { get; set; } = false;
+
         public string AzureOpenAIAPIEndpoint { get; set; } = string.Empty;
 
         public string AzureOpenAIAPIKey { get; set; } = string.Empty;

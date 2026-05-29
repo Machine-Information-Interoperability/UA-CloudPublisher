@@ -414,7 +414,7 @@ public class KafkaClient : IBrokerClient
         }
     }
 
-    public async Task PublishAsync(byte[] payload)
+    public async Task PublishAsync(byte[] payload, string topic = null)
     {
         if (_producer == null)
         {
@@ -426,8 +426,9 @@ public class KafkaClient : IBrokerClient
             Headers = new Headers() { { "Content-Type", Encoding.UTF8.GetBytes("application/json") } },
             Value = Encoding.UTF8.GetString(payload)
         };
-
-        await TryPublishAsync(_producer, Settings.Instance.BrokerMessageTopic, message, isAlt: false).ConfigureAwait(false);
+        
+        string effectiveTopic = string.IsNullOrWhiteSpace(topic) ? Settings.Instance.BrokerMessageTopic : topic;
+        await TryPublishAsync(_producer, effectiveTopic, message, isAlt: false).ConfigureAwait(false);
     }
 
     public async Task PublishMetadataAsync(byte[] payload)

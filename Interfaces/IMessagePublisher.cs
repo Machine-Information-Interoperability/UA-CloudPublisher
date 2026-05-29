@@ -4,7 +4,7 @@ namespace Opc.Ua.Cloud.Publisher.Interfaces
 {
     public interface IMessagePublisher
     {
-        Task<bool> SendMessageAsync(byte[] message);
+        Task<bool> SendMessageAsync(byte[] message, string topic = null);
 
         Task<bool> SendMetadataAsync(byte[] metadata);
 

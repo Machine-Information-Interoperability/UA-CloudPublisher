@@ -37,15 +37,19 @@ namespace Opc.Ua.Cloud.Publisher
         private static ILogger _logger;
         private readonly IMessageEncoder _encoder;
         private readonly IMessagePublisher _sink;
+        private readonly IMultiTopicPublishingState _multiTopicState;
+        private string _currentBatchTopic;
 
         public MessageProcessor(
             IMessageEncoder encoder,
             ILoggerFactory loggerFactory,
-            IMessagePublisher sink)
+            IMessagePublisher sink,
+            IMultiTopicPublishingState multiTopicState)
         {
             _logger = loggerFactory.CreateLogger("MessageProcessor");
             _encoder = encoder;
             _sink = sink;
+            _multiTopicState = multiTopicState;
         }
 
         public void ClearMetadataMessageCache()
@@ -127,7 +131,7 @@ namespace Opc.Ua.Cloud.Publisher
                             if (!_batchEmpty)
                             {
                                 // send what we have so far
-                                await SendBatchAsync(FinishBatch()).ConfigureAwait(false);
+                                await SendBatchAsync(FinishBatch(), _currentBatchTopic).ConfigureAwait(false);
                                 continue;
                             }
                             else
@@ -144,40 +148,32 @@ namespace Opc.Ua.Cloud.Publisher
                         Diagnostics.Singleton.Info.MonitoredItemsQueueCount = _monitoredItemsDataQueue.Count;
                     }
 
-                    // check if we should send the new item straight away (single message send case or if there are events)
-                    if (_singleMessageSend || (messageData.EventValues.Count > 0))
+                    IReadOnlyCollection<string> topics = _multiTopicState.ResolveTopics(messageData.EndpointUrl, messageData.ExpandedNodeId);
+                    if (!Settings.Instance.EnableMultiTopicPublishing)
                     {
-                        BatchMessage(await JsonEncodeMessageAsync(messageData).ConfigureAwait(false));
-                        await SendBatchAsync(FinishBatch()).ConfigureAwait(false);
+                        await ProcessMessageForTopicAsync(messageData, null).ConfigureAwait(false);
                     }
-                    else
+                    else if (topics.Count == 0)
                     {
-                        // batch message instead
-                        string jsonMessage = await JsonEncodeMessageAsync(messageData).ConfigureAwait(false);
-                        int jsonMessageSize = Encoding.UTF8.GetByteCount(jsonMessage);
-                        uint hubMessageBufferSize = Settings.Instance.BrokerMessageSize > 0 ? Settings.Instance.BrokerMessageSize : Settings.HubMessageSizeMax;
-                        int encodedMessagePropertiesLengthMax = 512;
-
-                        // reduce the message payload by the space occupied by the message properties
-                        hubMessageBufferSize -= (uint)encodedMessagePropertiesLengthMax;
-
-                        // check if the message will fit into our batch in principle
-                        if (jsonMessageSize > hubMessageBufferSize)
+                        if (!string.IsNullOrWhiteSpace(Settings.Instance.BrokerMessageTopic))
                         {
-                            _logger.LogError($"Configured hub message size {hubMessageBufferSize} too small to even fit the generated telemetry message of {jsonMessageSize}. Please adjust. The telemetry message will be discarded!");
-                            Diagnostics.Singleton.Info.TooLargeCount++;
-                            continue;
-                        }
-
-                        // check if the message still fits into out batch, otherwise send what we have so far and start a new batch with the message
-                        if ((_batchBuffer.Position + jsonMessageSize + _messageClosingParenthesisSize) < hubMessageBufferSize)
-                        {
-                            BatchMessage(jsonMessage);
+                            _logger.LogDebug("No explicit topic route found for node {ExpandedNodeId} on endpoint {EndpointUrl}. Falling back to Settings.BrokerMessageTopic.",
+                                messageData.ExpandedNodeId,
+                                messageData.EndpointUrl);
+                            await ProcessMessageForTopicAsync(messageData, null).ConfigureAwait(false);
                         }
                         else
                         {
-                            await SendBatchAsync(FinishBatch()).ConfigureAwait(false);
-                            BatchMessage(jsonMessage);
+                            _logger.LogWarning("Dropping telemetry for node {ExpandedNodeId} on endpoint {EndpointUrl} because no topic route was found and Settings.BrokerMessageTopic is empty.",
+                                messageData.ExpandedNodeId,
+                                messageData.EndpointUrl);
+                        }
+                    }
+                    else
+                    {
+                        foreach (string topic in topics)
+                        {
+                            await ProcessMessageForTopicAsync(messageData, topic).ConfigureAwait(false);
                         }
                     }
                 }
@@ -258,9 +254,65 @@ namespace Opc.Ua.Cloud.Publisher
             return _batchBuffer.ToArray();
         }
 
-        private async Task SendBatchAsync(byte[] bytesToSend)
+        private async Task ProcessMessageForTopicAsync(MessageProcessorModel messageData, string topic)
         {
-            if (await _sink.SendMessageAsync(bytesToSend).ConfigureAwait(false))
+            // check if we should send the new item straight away (single message send case or if there are events)
+            if (_singleMessageSend || (messageData.EventValues.Count > 0))
+            {
+                if (!_batchEmpty)
+                {
+                    await SendBatchAsync(FinishBatch(), _currentBatchTopic).ConfigureAwait(false);
+                }
+
+                _currentBatchTopic = topic;
+                BatchMessage(await JsonEncodeMessageAsync(messageData).ConfigureAwait(false));
+                await SendBatchAsync(FinishBatch(), _currentBatchTopic).ConfigureAwait(false);
+                return;
+            }
+
+            // batch message instead
+            string jsonMessage = await JsonEncodeMessageAsync(messageData).ConfigureAwait(false);
+            int jsonMessageSize = Encoding.UTF8.GetByteCount(jsonMessage);
+            uint hubMessageBufferSize = Settings.Instance.BrokerMessageSize > 0 ? Settings.Instance.BrokerMessageSize : Settings.HubMessageSizeMax;
+            int encodedMessagePropertiesLengthMax = 512;
+
+            // reduce the message payload by the space occupied by the message properties
+            hubMessageBufferSize -= (uint)encodedMessagePropertiesLengthMax;
+
+            // check if the message will fit into our batch in principle
+            if (jsonMessageSize > hubMessageBufferSize)
+            {
+                _logger.LogError($"Configured hub message size {hubMessageBufferSize} too small to even fit the generated telemetry message of {jsonMessageSize}. Please adjust. The telemetry message will be discarded!");
+                Diagnostics.Singleton.Info.TooLargeCount++;
+                return;
+            }
+
+            if (!_batchEmpty && !string.Equals(_currentBatchTopic, topic, StringComparison.Ordinal))
+            {
+                await SendBatchAsync(FinishBatch(), _currentBatchTopic).ConfigureAwait(false);
+            }
+
+            if (_batchEmpty)
+            {
+                _currentBatchTopic = topic;
+            }
+
+            // check if the message still fits into our batch, otherwise send what we have so far and start a new batch with the message
+            if ((_batchBuffer.Position + jsonMessageSize + _messageClosingParenthesisSize) < hubMessageBufferSize)
+            {
+                BatchMessage(jsonMessage);
+            }
+            else
+            {
+                await SendBatchAsync(FinishBatch(), _currentBatchTopic).ConfigureAwait(false);
+                _currentBatchTopic = topic;
+                BatchMessage(jsonMessage);
+            }
+        }
+
+        private async Task SendBatchAsync(byte[] bytesToSend, string topic)
+        {
+            if (await _sink.SendMessageAsync(bytesToSend, topic).ConfigureAwait(false))
             {
                 _logger.LogDebug($"Sent {bytesToSend.Length} bytes to broker!");
             }
@@ -421,6 +473,7 @@ namespace Opc.Ua.Cloud.Publisher
         private void InitBatch()
         {
             _batchEmpty = true;
+            _currentBatchTopic = null;
             _batchBuffer.Position = 0;
             _batchBuffer.SetLength(0);
             _notificationsInBatch = 0;

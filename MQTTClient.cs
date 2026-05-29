@@ -265,16 +265,33 @@
             }
         }
 
-        public async Task PublishAsync(byte[] payload)
+        public async Task PublishAsync(byte[] payload, string topic = null)
         {
+            if (_client == null || !_client.IsConnected)
+            {
+                // Handle startup timing where publishing can begin before background broker initialization completes.
+                await ConnectAsync(_isAltBroker).ConfigureAwait(false);
+            }
+
+            string effectiveTopic = string.IsNullOrWhiteSpace(topic) ? Settings.Instance.BrokerMessageTopic : topic;
+            if (string.IsNullOrWhiteSpace(effectiveTopic))
+            {
+                throw new InvalidOperationException("Cannot publish MQTT message because no topic was provided and Settings.BrokerMessageTopic is empty.");
+            }
+
             if (_client == null)
             {
-                throw new InvalidOperationException("MQTT client is not connected.");
+                throw new InvalidOperationException("MQTT client is not initialized after reconnect attempt. Verify broker settings (BrokerUrl/BrokerPort) and connectivity.");
+            }
+
+            if (!_client.IsConnected)
+            {
+                throw new InvalidOperationException("MQTT client is not connected after reconnect attempt.");
             }
 
             MqttApplicationMessage message = new MqttApplicationMessageBuilder()
                 .WithQualityOfServiceLevel(MqttQualityOfServiceLevel.AtLeastOnce)
-                .WithTopic(Settings.Instance.BrokerMessageTopic)
+                .WithTopic(effectiveTopic)
                 .WithPayload(payload)
                 .Build();
 
