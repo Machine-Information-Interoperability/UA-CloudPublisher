@@ -68,6 +68,7 @@ namespace Opc.Ua.Cloud.Publisher.Controllers
         /// ]
         /// </remarks>
         /// <param name="topic">MQTT topic name where telemetry will be published (query parameter).</param>
+        /// <param name="registrationKey">Optional registration ID to use as the registration key. If omitted, a deterministic key is generated from the topic and node configuration.</param>
         /// <param name="publishedNodes">Array of published node configurations in publishednodes.json format (request body).</param>
         /// <returns>
         /// 202 Accepted if new registration started successfully, or 200 OK if duplicate combo already active.
@@ -78,7 +79,7 @@ namespace Opc.Ua.Cloud.Publisher.Controllers
         /// </returns>
         [HttpPost("publishednodes")]
         [Consumes("application/json")]
-        public async Task<IActionResult> StartPublishingAsync([FromQuery(Name = "topic")] string topic, [FromBody] List<PublishNodesInterfaceModel> publishedNodes)
+        public async Task<IActionResult> StartPublishingAsync([FromQuery(Name = "topic")] string topic, [FromQuery(Name = "registrationKey")] string registrationKey, [FromBody] List<PublishNodesInterfaceModel> publishedNodes)
         {
             if (!Settings.Instance.EnableMultiTopicPublishing)
             {
@@ -105,7 +106,7 @@ namespace Opc.Ua.Cloud.Publisher.Controllers
                 string publishedNodesJson = JsonConvert.SerializeObject(publishedNodes, Formatting.None);
 
                 RegisterTopicPublishingResult result = await _multiTopicState
-                    .RegisterAndStartPublishingAsync(topic, publishedNodesJson, _publishedNodesFileHandler)
+                    .RegisterAndStartPublishingAsync(topic, publishedNodesJson, _publishedNodesFileHandler, registrationKey)
                     .ConfigureAwait(false);
 
                 if (result.IsDuplicate)

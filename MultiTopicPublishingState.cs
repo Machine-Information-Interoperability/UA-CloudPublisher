@@ -110,7 +110,7 @@ namespace Opc.Ua.Cloud.Publisher
             _logger.LogInformation("Restored {Count} active topic publisher(s) from state file.", activeTopicPublishers.Length);
         }
 
-        public async Task<RegisterTopicPublishingResult> RegisterAndStartPublishingAsync(string topic, string publishedNodesJson, IPublishedNodesFileHandler publishedNodesFileHandler)
+        public async Task<RegisterTopicPublishingResult> RegisterAndStartPublishingAsync(string topic, string publishedNodesJson, IPublishedNodesFileHandler publishedNodesFileHandler, string registrationKey = null)
         {
             if (string.IsNullOrWhiteSpace(topic))
             {
@@ -129,7 +129,9 @@ namespace Opc.Ua.Cloud.Publisher
             }
 
             string normalizedJson = json.ToString(Formatting.None);
-            string registrationKey = ComputeRegistrationKey(topic, normalizedJson);
+            registrationKey = !string.IsNullOrWhiteSpace(registrationKey)
+                ? registrationKey.Trim()
+                : ComputeRegistrationKey(topic, normalizedJson);
             List<string> routingKeys = ExtractRoutingKeys((JArray)json);
 
             await _stateLock.WaitAsync().ConfigureAwait(false);

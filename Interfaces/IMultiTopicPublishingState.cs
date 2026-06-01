@@ -6,7 +6,7 @@ namespace Opc.Ua.Cloud.Publisher.Interfaces
 
     public interface IMultiTopicPublishingState
     {
-        Task<RegisterTopicPublishingResult> RegisterAndStartPublishingAsync(string topic, string publishedNodesJson, IPublishedNodesFileHandler publishedNodesFileHandler);
+        Task<RegisterTopicPublishingResult> RegisterAndStartPublishingAsync(string topic, string publishedNodesJson, IPublishedNodesFileHandler publishedNodesFileHandler, string registrationKey = null);
 
         Task<UnregisterTopicPublishingResult> UnregisterAsync(string registrationKey);
 
