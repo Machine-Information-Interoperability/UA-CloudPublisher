@@ -106,6 +106,15 @@ UA Cloud Publisher contains a second broker client that can be used either to **
 
 For the multi-topic REST API (`/api/publishing`), set `MultiTopicPublishingApiKey` in `settings/settings.json` to require `Authorization: Bearer <key>`.
 
+## Publishing API
+
+The Publishing API (`/api/publishing`) manages multi-topic publishing registrations at runtime. It allows clients to start publishing a `publishednodes.json` payload to a specific broker topic and to stop publishing later by registration key.
+
+- `POST /api/publishing/publishednodes?topic=<topic>[&registrationKey=<key>]` registers and starts publishing for that topic.
+- `DELETE /api/publishing/publishednodes/{registrationKey}` removes one registration and stops topic publishing when the last registration for that topic is removed.
+
+The API is available when `EnableMultiTopicPublishing` is enabled. If `MultiTopicPublishingApiKey` is set in settings, requests must include `Authorization: Bearer <key>`.
+
 ## PublishedNodes.json File Format
 
 (All intervals must be specified in milliseconds)
