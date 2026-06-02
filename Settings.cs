@@ -192,6 +192,8 @@
 
         public bool EnableMultiTopicPublishing { get; set; } = false;
 
+        public string MultiTopicPublishingApiKey { get; set; } = string.Empty;
+
         public string AzureOpenAIAPIEndpoint { get; set; } = string.Empty;
 
         public string AzureOpenAIAPIKey { get; set; } = string.Empty;

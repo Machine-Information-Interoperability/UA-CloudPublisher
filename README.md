@@ -104,6 +104,8 @@ UA Cloud Publisher contains a second broker client that can be used either to **
 - OPCUA_USERNAME - OPC UA server username to use (for GDS push and when none is specified in publishednodes.json file)
 - OPCUA_PASSWORD - OPC UA server password to use (for GDS push and when none is specified in publishednodes.json file)
 
+For the multi-topic REST API (`/api/publishing`), set `MultiTopicPublishingApiKey` in `settings/settings.json` to require `Authorization: Bearer <key>`.
+
 ## PublishedNodes.json File Format
 
 (All intervals must be specified in milliseconds)

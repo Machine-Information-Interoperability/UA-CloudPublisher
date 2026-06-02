@@ -9,6 +9,8 @@ namespace Opc.Ua.Cloud.Publisher.Controllers
     using System;
     using System.Collections.Generic;
     using System.Linq;
+    using System.Security.Cryptography;
+    using System.Text;
     using System.Threading.Tasks;
 
     /// <summary>
@@ -81,6 +83,12 @@ namespace Opc.Ua.Cloud.Publisher.Controllers
         [Consumes("application/json")]
         public async Task<IActionResult> StartPublishingAsync([FromQuery(Name = "topic")] string topic, [FromQuery(Name = "registrationKey")] string registrationKey, [FromBody] List<PublishNodesInterfaceModel> publishedNodes)
         {
+            IActionResult authFailure = ValidateApiKeyAuthorization();
+            if (authFailure != null)
+            {
+                return authFailure;
+            }
+
             if (!Settings.Instance.EnableMultiTopicPublishing)
             {
                 return StatusCode(503, new { error = "Multi-topic publishing is not enabled. Set 'EnableMultiTopicPublishing' to true in settings." });
@@ -160,6 +168,12 @@ namespace Opc.Ua.Cloud.Publisher.Controllers
         [HttpDelete("publishednodes/{registrationKey}")]
         public async Task<IActionResult> StopPublishingAsync([FromRoute] string registrationKey)
         {
+            IActionResult authFailure = ValidateApiKeyAuthorization();
+            if (authFailure != null)
+            {
+                return authFailure;
+            }
+
             if (!Settings.Instance.EnableMultiTopicPublishing)
             {
                 return StatusCode(503, new { error = "Multi-topic publishing is not enabled. Set 'EnableMultiTopicPublishing' to true in settings." });
@@ -316,6 +330,52 @@ namespace Opc.Ua.Cloud.Publisher.Controllers
                 ? uri.ToString()
                 : endpointUrl.Trim();
         }
+
+        private IActionResult ValidateApiKeyAuthorization()
+        {
+            string configuredApiKey = Settings.Instance.MultiTopicPublishingApiKey;
+            if (string.IsNullOrWhiteSpace(configuredApiKey))
+            {
+                return null;
+            }
+
+            if (!Request.Headers.TryGetValue("Authorization", out var authorizationHeader))
+            {
+                return Unauthorized(new { error = "Missing Authorization header. Use 'Authorization: Bearer <API_KEY>'." });
+            }
+
+            string headerValue = authorizationHeader.ToString();
+            const string bearerPrefix = "Bearer ";
+            if (!headerValue.StartsWith(bearerPrefix, StringComparison.OrdinalIgnoreCase))
+            {
+                return Unauthorized(new { error = "Authorization header must use Bearer authentication." });
+            }
+
+            string providedApiKey = headerValue.Substring(bearerPrefix.Length).Trim();
+            if (string.IsNullOrEmpty(providedApiKey))
+            {
+                return Unauthorized(new { error = "Missing API key token in Authorization header." });
+            }
+
+            if (!ApiKeysMatch(configuredApiKey, providedApiKey))
+            {
+                return Unauthorized(new { error = "Invalid API key." });
+            }
+
+            return null;
+        }
+
+        private static bool ApiKeysMatch(string expectedApiKey, string providedApiKey)
+        {
+            byte[] expected = Encoding.UTF8.GetBytes(expectedApiKey);
+            byte[] provided = Encoding.UTF8.GetBytes(providedApiKey);
+
+            if (expected.Length != provided.Length)
+            {
+                return false;
+            }
+
+            return CryptographicOperations.FixedTimeEquals(expected, provided);
+        }
     }
 }
-

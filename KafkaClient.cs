@@ -431,26 +431,6 @@ public class KafkaClient : IBrokerClient
         await TryPublishAsync(_producer, effectiveTopic, message, isAlt: false).ConfigureAwait(false);
     }
 
-    private string ResolveMetadataTopic(string topic)
-    {
-        if (!string.IsNullOrWhiteSpace(topic))
-        {
-            return topic;
-        }
-
-        if (!string.IsNullOrWhiteSpace(Settings.Instance.BrokerMetadataTopic))
-        {
-            return Settings.Instance.BrokerMetadataTopic;
-        }
-
-        if (!string.IsNullOrWhiteSpace(Settings.Instance.BrokerMessageTopic))
-        {
-            return Settings.Instance.BrokerMessageTopic;
-        }
-
-        throw new InvalidOperationException("Cannot publish Kafka metadata because no metadata topic was provided and both Settings.BrokerMetadataTopic and Settings.BrokerMessageTopic are empty.");
-    }
-
     public async Task PublishMetadataAsync(byte[] payload, string topic = null)
     {
         Message<Null, string> message = new()
@@ -458,7 +438,7 @@ public class KafkaClient : IBrokerClient
             Headers = new Headers() { { "Content-Type", Encoding.UTF8.GetBytes("application/json") } },
             Value = Encoding.UTF8.GetString(payload)
         };
-        string metadataTopic = ResolveMetadataTopic(topic);
+        string metadataTopic = TopicRoutingHelper.ResolveMetadataTopic(topic, "Kafka");
 
         if (Settings.Instance.UseAltBrokerForMetadata && Settings.Instance.UseKafkaForAlt)
         {

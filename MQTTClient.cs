@@ -7,6 +7,7 @@
     using MQTTnet.Protocol;
     using Newtonsoft.Json;
     using Opc.Ua.Cloud.Dashboard;
+    using Opc.Ua.Cloud.Publisher;
     using Opc.Ua.Cloud.Publisher.Interfaces;
     using Opc.Ua.Cloud.Publisher.Models;
     using System;
@@ -298,26 +299,6 @@
             await _client.PublishAsync(message, _cancellationTokenSource.Token).ConfigureAwait(false);
         }
 
-        private string ResolveMetadataTopic(string topic)
-        {
-            if (!string.IsNullOrWhiteSpace(topic))
-            {
-                return topic;
-            }
-
-            if (!string.IsNullOrWhiteSpace(Settings.Instance.BrokerMetadataTopic))
-            {
-                return Settings.Instance.BrokerMetadataTopic;
-            }
-
-            if (!string.IsNullOrWhiteSpace(Settings.Instance.BrokerMessageTopic))
-            {
-                return Settings.Instance.BrokerMessageTopic;
-            }
-
-            throw new InvalidOperationException("Cannot publish MQTT metadata because no metadata topic was provided and both Settings.BrokerMetadataTopic and Settings.BrokerMessageTopic are empty.");
-        }
-
         public async Task PublishMetadataAsync(byte[] payload, string topic = null)
         {
             if (_client == null)
@@ -325,7 +306,7 @@
                 throw new InvalidOperationException("MQTT client is not connected.");
             }
 
-            string metadataTopic = ResolveMetadataTopic(topic);
+            string metadataTopic = TopicRoutingHelper.ResolveMetadataTopic(topic, "MQTT");
 
             MqttApplicationMessage message = new MqttApplicationMessageBuilder()
                 .WithQualityOfServiceLevel(MqttQualityOfServiceLevel.AtLeastOnce)
