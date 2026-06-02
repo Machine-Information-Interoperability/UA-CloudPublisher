@@ -298,16 +298,38 @@
             await _client.PublishAsync(message, _cancellationTokenSource.Token).ConfigureAwait(false);
         }
 
-        public async Task PublishMetadataAsync(byte[] payload)
+        private string ResolveMetadataTopic(string topic)
+        {
+            if (!string.IsNullOrWhiteSpace(topic))
+            {
+                return topic;
+            }
+
+            if (!string.IsNullOrWhiteSpace(Settings.Instance.BrokerMetadataTopic))
+            {
+                return Settings.Instance.BrokerMetadataTopic;
+            }
+
+            if (!string.IsNullOrWhiteSpace(Settings.Instance.BrokerMessageTopic))
+            {
+                return Settings.Instance.BrokerMessageTopic;
+            }
+
+            throw new InvalidOperationException("Cannot publish MQTT metadata because no metadata topic was provided and both Settings.BrokerMetadataTopic and Settings.BrokerMessageTopic are empty.");
+        }
+
+        public async Task PublishMetadataAsync(byte[] payload, string topic = null)
         {
             if (_client == null)
             {
                 throw new InvalidOperationException("MQTT client is not connected.");
             }
 
+            string metadataTopic = ResolveMetadataTopic(topic);
+
             MqttApplicationMessage message = new MqttApplicationMessageBuilder()
                 .WithQualityOfServiceLevel(MqttQualityOfServiceLevel.AtLeastOnce)
-                .WithTopic(Settings.Instance.BrokerMetadataTopic)
+                .WithTopic(metadataTopic)
                 .WithPayload(payload)
                 .Build();
 

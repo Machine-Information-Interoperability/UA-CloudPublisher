@@ -8,6 +8,6 @@ namespace Opc.Ua.Cloud.Publisher.Interfaces
 
         Task PublishAsync(byte[] payload, string topic = null);
 
-        Task PublishMetadataAsync(byte[] metadata);
+        Task PublishMetadataAsync(byte[] metadata, string topic = null);
     }
 }

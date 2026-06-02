@@ -62,7 +62,7 @@
             _altClient = altClient;
         }
 
-        public async Task<bool> SendMetadataAsync(byte[] message)
+        public async Task<bool> SendMetadataAsync(byte[] message, string topic = null)
         {
             bool success = false;
             long startTime = Stopwatch.GetTimestamp();
@@ -73,7 +73,7 @@
             {
                 if (client != null)
                 {
-                    await client.PublishMetadataAsync(message).ConfigureAwait(false);
+                    await client.PublishMetadataAsync(message, topic).ConfigureAwait(false);
                     success = true;
 
                     Diagnostics.Singleton.Info.SentBytes += message.Length;

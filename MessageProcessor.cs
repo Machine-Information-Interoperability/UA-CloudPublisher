@@ -27,7 +27,14 @@ namespace Opc.Ua.Cloud.Publisher
         MemoryStream _batchBuffer = new MemoryStream();
         private static BlockingCollection<MessageProcessorModel> _monitoredItemsDataQueue;
 
-        private Dictionary<ushort, string> _metadataMessages = new Dictionary<ushort, string>();
+        private sealed class MetadataMessageEntry
+        {
+            public string Message { get; set; }
+
+            public string Topic { get; set; }
+        }
+
+        private Dictionary<string, MetadataMessageEntry> _metadataMessages = new Dictionary<string, MetadataMessageEntry>();
         private object _metadataMessagesLock = new object();
 
         private Timer _metadataTimer;
@@ -265,13 +272,13 @@ namespace Opc.Ua.Cloud.Publisher
                 }
 
                 _currentBatchTopic = topic;
-                BatchMessage(await JsonEncodeMessageAsync(messageData).ConfigureAwait(false));
+                BatchMessage(await JsonEncodeMessageAsync(messageData, topic).ConfigureAwait(false));
                 await SendBatchAsync(FinishBatch(), _currentBatchTopic).ConfigureAwait(false);
                 return;
             }
 
             // batch message instead
-            string jsonMessage = await JsonEncodeMessageAsync(messageData).ConfigureAwait(false);
+            string jsonMessage = await JsonEncodeMessageAsync(messageData, topic).ConfigureAwait(false);
             int jsonMessageSize = Encoding.UTF8.GetByteCount(jsonMessage);
             uint hubMessageBufferSize = Settings.Instance.BrokerMessageSize > 0 ? Settings.Instance.BrokerMessageSize : Settings.HubMessageSizeMax;
             int encodedMessagePropertiesLengthMax = 512;
@@ -358,7 +365,7 @@ namespace Opc.Ua.Cloud.Publisher
 
             try
             {
-                KeyValuePair<ushort, string>[] currentMessages = null;
+                KeyValuePair<string, MetadataMessageEntry>[] currentMessages = null;
                 lock (_metadataMessagesLock)
                 {
                     if (_metadataMessages.Count > 0)
@@ -369,15 +376,15 @@ namespace Opc.Ua.Cloud.Publisher
 
                 if (currentMessages != null)
                 {
-                    foreach (KeyValuePair<ushort, string> metadataMessage in currentMessages)
+                    foreach (KeyValuePair<string, MetadataMessageEntry> metadataMessage in currentMessages)
                     {
                         using (MemoryStream buffer = new MemoryStream())
                         {
                             buffer.Write(Encoding.UTF8.GetBytes(_encoder.EncodeHeader(Interlocked.Increment(ref _messageID) - 1, true)));
                             buffer.Write(Encoding.UTF8.GetBytes(","));
-                            buffer.Write(Encoding.UTF8.GetBytes(metadataMessage.Value));
+                            buffer.Write(Encoding.UTF8.GetBytes(metadataMessage.Value.Message));
 
-                            if (await _sink.SendMetadataAsync(buffer.ToArray()).ConfigureAwait(false))
+                            if (await _sink.SendMetadataAsync(buffer.ToArray(), metadataMessage.Value.Topic).ConfigureAwait(false))
                             {
                                 _logger.LogDebug($"Sent {buffer.Length} metadata bytes to broker!");
                             }
@@ -396,7 +403,7 @@ namespace Opc.Ua.Cloud.Publisher
             }
         }
 
-        private async Task<string> JsonEncodeMessageAsync(MessageProcessorModel messageData)
+        private async Task<string> JsonEncodeMessageAsync(MessageProcessorModel messageData, string topic)
         {
             ushort hash;
             string jsonMessage = _encoder.EncodePayload(messageData, out hash);
@@ -405,11 +412,16 @@ namespace Opc.Ua.Cloud.Publisher
             {
                 string metadataMessage = _encoder.EncodeMetadata(messageData);
                 bool isNewMetadata = false;
+                string metadataCacheKey = string.IsNullOrWhiteSpace(topic) ? hash.ToString() : $"{hash}:{topic}";
                 lock (_metadataMessagesLock)
                 {
-                    if (!_metadataMessages.ContainsKey(hash))
+                    if (!_metadataMessages.ContainsKey(metadataCacheKey))
                     {
-                        _metadataMessages.Add(hash, metadataMessage);
+                        _metadataMessages.Add(metadataCacheKey, new MetadataMessageEntry
+                        {
+                            Message = metadataMessage,
+                            Topic = topic
+                        });
                         isNewMetadata = true;
                     }
                 }
@@ -422,7 +434,7 @@ namespace Opc.Ua.Cloud.Publisher
                         buffer.Write(Encoding.UTF8.GetBytes(","));
                         buffer.Write(Encoding.UTF8.GetBytes(metadataMessage));
 
-                        if (await _sink.SendMetadataAsync(buffer.ToArray()).ConfigureAwait(false))
+                        if (await _sink.SendMetadataAsync(buffer.ToArray(), topic).ConfigureAwait(false))
                         {
                             _logger.LogDebug($"Sent {buffer.Length} metadata bytes to broker!");
                         }
