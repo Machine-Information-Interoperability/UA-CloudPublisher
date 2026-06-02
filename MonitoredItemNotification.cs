@@ -74,6 +74,7 @@ namespace Opc.Ua.Cloud.Publisher
 
                 MessageProcessorModel messageData = new()
                 {
+                    EndpointUrl = monitoredItem.Subscription.Session.ConfiguredEndpoint.EndpointUrl.AbsoluteUri,
                     ExpandedNodeId = NodeId.ToExpandedNodeId(monitoredItem.ResolvedNodeId, monitoredItem.Subscription.Session.NamespaceUris).ToString(),
                     ApplicationUri = monitoredItem.Subscription.Session.Endpoint.Server.ApplicationUri,
                     MessageContext = (ServiceMessageContext)monitoredItem.Subscription.Session.MessageContext
@@ -357,6 +358,7 @@ namespace Opc.Ua.Cloud.Publisher
                 {
                     MessageProcessorModel messageData = new MessageProcessorModel
                     {
+                        EndpointUrl = monitoredItem.Subscription.Session.ConfiguredEndpoint.EndpointUrl.AbsoluteUri,
                         ExpandedNodeId = NodeId.ToExpandedNodeId(monitoredItem.ResolvedNodeId, monitoredItem.Subscription.Session.NamespaceUris).ToString(),
                         ApplicationUri = monitoredItem.Subscription.Session.Endpoint.Server.ApplicationUri,
                         MessageContext = (ServiceMessageContext)monitoredItem.Subscription.Session.MessageContext,

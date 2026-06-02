@@ -40,6 +40,47 @@ namespace Opc.Ua.Cloud.Publisher
 
             services.AddHttpClient();
 
+            services.AddSwaggerGen(c =>
+            {
+                c.SwaggerDoc("v1", new Microsoft.OpenApi.Models.OpenApiInfo
+                {
+                    Title = "UA Cloud Publisher API",
+                    Version = "v1",
+                    Description = "REST API for publishing OPC UA nodes to MQTT topics"
+                });
+
+                c.AddSecurityDefinition("Bearer", new Microsoft.OpenApi.Models.OpenApiSecurityScheme
+                {
+                    Name = "Authorization",
+                    Type = Microsoft.OpenApi.Models.SecuritySchemeType.Http,
+                    Scheme = "bearer",
+                    BearerFormat = "JWT",
+                    In = Microsoft.OpenApi.Models.ParameterLocation.Header,
+                    Description = "Use: Bearer <token>"
+                });
+
+                c.AddSecurityRequirement(new Microsoft.OpenApi.Models.OpenApiSecurityRequirement
+                {
+                    {
+                        new Microsoft.OpenApi.Models.OpenApiSecurityScheme
+                        {
+                            Reference = new Microsoft.OpenApi.Models.OpenApiReference
+                            {
+                                Type = Microsoft.OpenApi.Models.ReferenceType.SecurityScheme,
+                                Id = "Bearer"
+                            }
+                        },
+                        Array.Empty<string>()
+                    }
+                });
+
+                var xmlFile = Path.Combine(AppContext.BaseDirectory, "UA-CloudPublisher.xml");
+                if (File.Exists(xmlFile))
+                {
+                    c.IncludeXmlComments(xmlFile);
+                }
+            });
+
             // add our singletons
             services.AddSingleton<IUAApplication, UAApplication>();
             services.AddSingleton<IUAClient, UAClient>();
@@ -61,6 +102,7 @@ namespace Opc.Ua.Cloud.Publisher
             });
 
             services.AddSingleton<IPublishedNodesFileHandler, PublishedNodesFileHandler>();
+            services.AddSingleton<IMultiTopicPublishingState, MultiTopicPublishingState>();
             services.AddSingleton<ICommandProcessor, CommandProcessor>();
 
             // add our message processing engine
@@ -79,7 +121,8 @@ namespace Opc.Ua.Cloud.Publisher
                               IMessageProcessor engine,
                               IMessagePublisher messagePublisher,
                               Settings.BrokerResolver brokerResolver,
-                              IPublishedNodesFileHandler publishedNodesFileHandler)
+                              IPublishedNodesFileHandler publishedNodesFileHandler,
+                              IMultiTopicPublishingState multiTopicPublishingState)
         {
             if (env.IsDevelopment())
             {
@@ -99,10 +142,18 @@ namespace Opc.Ua.Cloud.Publisher
 
             app.UseSession();
 
+            app.UseSwagger();
+            app.UseSwaggerUI(c =>
+            {
+                c.SwaggerEndpoint("/swagger/v1/swagger.json", "UA Cloud Publisher API v1");
+                c.RoutePrefix = "swagger";
+            });
+
             app.UseRouting();
 
             app.UseEndpoints(endpoints =>
             {
+                endpoints.MapControllers();
                 endpoints.MapControllerRoute(
                     name: "default",
                     pattern: "{controller=Home}/{action=Index}/{id?}");
@@ -181,6 +232,9 @@ namespace Opc.Ua.Cloud.Publisher
                 {
                     logger.LogError(ex, "Background initialization failed.");
                 }
+
+                // restore REST API topic registrations when node auto-load is disabled
+                await multiTopicPublishingState.EnsureRestoredAsync(publishedNodesFileHandler).ConfigureAwait(false);
             });
         }
     }

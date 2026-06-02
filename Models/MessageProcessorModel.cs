@@ -6,6 +6,8 @@ namespace Opc.Ua.Cloud.Publisher.Models
 
     public class MessageProcessorModel
     {
+        public string EndpointUrl { get; set; }
+
         public string ExpandedNodeId { get; set; }
 
         public string ApplicationUri { get; set; }

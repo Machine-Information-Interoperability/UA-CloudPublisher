@@ -7,6 +7,7 @@
     using MQTTnet.Protocol;
     using Newtonsoft.Json;
     using Opc.Ua.Cloud.Dashboard;
+    using Opc.Ua.Cloud.Publisher;
     using Opc.Ua.Cloud.Publisher.Interfaces;
     using Opc.Ua.Cloud.Publisher.Models;
     using System;
@@ -265,32 +266,51 @@
             }
         }
 
-        public async Task PublishAsync(byte[] payload)
+        public async Task PublishAsync(byte[] payload, string topic = null)
         {
+            if (_client == null || !_client.IsConnected)
+            {
+                // Handle startup timing where publishing can begin before background broker initialization completes.
+                await ConnectAsync(_isAltBroker).ConfigureAwait(false);
+            }
+
+            string effectiveTopic = string.IsNullOrWhiteSpace(topic) ? Settings.Instance.BrokerMessageTopic : topic;
+            if (string.IsNullOrWhiteSpace(effectiveTopic))
+            {
+                throw new InvalidOperationException("Cannot publish MQTT message because no topic was provided and Settings.BrokerMessageTopic is empty.");
+            }
+
             if (_client == null)
             {
-                throw new InvalidOperationException("MQTT client is not connected.");
+                throw new InvalidOperationException("MQTT client is not initialized after reconnect attempt. Verify broker settings (BrokerUrl/BrokerPort) and connectivity.");
+            }
+
+            if (!_client.IsConnected)
+            {
+                throw new InvalidOperationException("MQTT client is not connected after reconnect attempt.");
             }
 
             MqttApplicationMessage message = new MqttApplicationMessageBuilder()
                 .WithQualityOfServiceLevel(MqttQualityOfServiceLevel.AtLeastOnce)
-                .WithTopic(Settings.Instance.BrokerMessageTopic)
+                .WithTopic(effectiveTopic)
                 .WithPayload(payload)
                 .Build();
 
             await _client.PublishAsync(message, _cancellationTokenSource.Token).ConfigureAwait(false);
         }
 
-        public async Task PublishMetadataAsync(byte[] payload)
+        public async Task PublishMetadataAsync(byte[] payload, string topic = null)
         {
             if (_client == null)
             {
                 throw new InvalidOperationException("MQTT client is not connected.");
             }
 
+            string metadataTopic = TopicRoutingHelper.ResolveMetadataTopic(topic, "MQTT");
+
             MqttApplicationMessage message = new MqttApplicationMessageBuilder()
                 .WithQualityOfServiceLevel(MqttQualityOfServiceLevel.AtLeastOnce)
-                .WithTopic(Settings.Instance.BrokerMetadataTopic)
+                .WithTopic(metadataTopic)
                 .WithPayload(payload)
                 .Build();
 

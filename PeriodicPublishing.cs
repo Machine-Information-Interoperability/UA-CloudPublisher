@@ -58,6 +58,7 @@ namespace Opc.Ua.Cloud.Publisher
             {
                 MessageProcessorModel messageData = new MessageProcessorModel
                 {
+                    EndpointUrl = HeartBeatSession.ConfiguredEndpoint.EndpointUrl.AbsoluteUri,
                     ExpandedNodeId = NodeId.ToExpandedNodeId(HeartBeatNodeId, HeartBeatSession.NamespaceUris).ToString(),
                     ApplicationUri = HeartBeatSession.Endpoint.Server.ApplicationUri,
                     MessageContext = HeartBeatSession.MessageContext,

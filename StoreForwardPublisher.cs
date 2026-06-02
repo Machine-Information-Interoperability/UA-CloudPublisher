@@ -1,6 +1,7 @@
 ﻿namespace Opc.Ua.Cloud.Publisher
 {
     using Microsoft.Extensions.Logging;
+    using Newtonsoft.Json;
     using Opc.Ua.Cloud.Publisher.Interfaces;
     using System;
     using System.Collections.Concurrent;
@@ -11,6 +12,13 @@
 
     public class StoreForwardPublisher : IMessagePublisher
     {
+        private class StoredMessageEnvelope
+        {
+            public string Topic { get; set; }
+
+            public string PayloadBase64 { get; set; }
+        }
+
         private IBrokerClient _client;
         private IBrokerClient _altClient;
 
@@ -54,7 +62,7 @@
             _altClient = altClient;
         }
 
-        public async Task<bool> SendMetadataAsync(byte[] message)
+        public async Task<bool> SendMetadataAsync(byte[] message, string topic = null)
         {
             bool success = false;
             long startTime = Stopwatch.GetTimestamp();
@@ -65,7 +73,7 @@
             {
                 if (client != null)
                 {
-                    await client.PublishMetadataAsync(message).ConfigureAwait(false);
+                    await client.PublishMetadataAsync(message, topic).ConfigureAwait(false);
                     success = true;
 
                     Diagnostics.Singleton.Info.SentBytes += message.Length;
@@ -92,7 +100,7 @@
             return success;
         }
 
-        public async Task<bool> SendMessageAsync(byte[] message)
+        public async Task<bool> SendMessageAsync(byte[] message, string topic = null)
         {
             bool success = false;
             long startTime = Stopwatch.GetTimestamp();
@@ -101,7 +109,7 @@
             {
                 if (_client != null)
                 {
-                    await _client.PublishAsync(message).ConfigureAwait(false);
+                    await _client.PublishAsync(message, topic).ConfigureAwait(false);
                     success = true;
 
                     Diagnostics.Singleton.Info.SentBytes += message.Length;
@@ -125,9 +133,16 @@
 
                 _logger.LogError(ex, "Error while sending message. Storing locally for later forward...");
                 Diagnostics.Singleton.Info.FailedMessages++;
+                
+                StoredMessageEnvelope envelope = new StoredMessageEnvelope
+                {
+                    Topic = topic,
+                    PayloadBase64 = Convert.ToBase64String(message)
+                };
 
-                await File.WriteAllBytesAsync(Path.Combine(_pathToStore, Path.GetRandomFileName()), message).ConfigureAwait(false);
-                Diagnostics.Singleton.Info.StoredMessagesCount = Directory.GetFiles(_pathToStore).Length;
+                byte[] bytes = System.Text.Encoding.UTF8.GetBytes(JsonConvert.SerializeObject(envelope));
+                await File.WriteAllBytesAsync(Path.Combine(_pathToStore, Path.GetRandomFileName()), bytes).ConfigureAwait(false);
+
             }
 
             RecordLatency((long)Stopwatch.GetElapsedTime(startTime).TotalMilliseconds);
@@ -153,11 +168,37 @@
                 }
 
                 byte[] bytes = await File.ReadAllBytesAsync(filePaths[0]).ConfigureAwait(false);
-                await _client.PublishAsync(bytes).ConfigureAwait(false);
+
+                string topic = null;
+                byte[] payload = bytes;
+
+                try
+                {
+                    StoredMessageEnvelope envelope = JsonConvert.DeserializeObject<StoredMessageEnvelope>(System.Text.Encoding.UTF8.GetString(bytes));
+                    if (envelope != null && !string.IsNullOrWhiteSpace(envelope.PayloadBase64))
+                    {
+                        payload = Convert.FromBase64String(envelope.PayloadBase64);
+                        topic = envelope.Topic;
+                    }
+                }
+                catch
+                {
+                    // Backward compatibility for old raw-byte store files.
+                }
+
+                if (string.IsNullOrWhiteSpace(topic) && string.IsNullOrWhiteSpace(Settings.Instance.BrokerMessageTopic))
+                {
+                    // Avoid blocking the replay queue forever with a message that can never be routed.
+                    _logger.LogError("Dropping stored message '{FileName}' because neither stored topic nor Settings.BrokerMessageTopic is set.", Path.GetFileName(filePaths[0]));
+                    File.Delete(filePaths[0]);
+                    return;
+                }
+
+                await _client.PublishAsync(payload, topic).ConfigureAwait(false);
 
                 File.Delete(filePaths[0]);
 
-                Diagnostics.Singleton.Info.SentBytes += bytes.Length;
+                Diagnostics.Singleton.Info.SentBytes += payload.Length;
                 Diagnostics.Singleton.Info.SentMessages++;
                 Diagnostics.Singleton.Info.FailedMessages = Math.Max(0, Diagnostics.Singleton.Info.FailedMessages - 1);
                 Diagnostics.Singleton.Info.SentLastTime = DateTime.UtcNow;
