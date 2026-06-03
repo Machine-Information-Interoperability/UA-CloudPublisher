@@ -157,7 +157,7 @@ Requirements and behavior:
 ]
 ```
 
-This feature was implemented by VDMA.
+This feature was implemented by <a href='https://vdma.eu/' target='_blank'>VDMA</a>.
 
 ## Sub-topics for Configuration from the Cloud
 
