@@ -106,14 +106,22 @@ UA Cloud Publisher contains a second broker client that can be used either to **
 
 For the multi-topic REST API (`/api/publishing`), set `MultiTopicPublishingApiKey` in `settings/settings.json` to require `Authorization: Bearer <key>`.
 
-## Publishing API
+## Publisher API (REST)
 
-The Publishing API (`/api/publishing`) manages multi-topic publishing registrations at runtime. It allows clients to start publishing a `publishednodes.json` payload to a specific broker topic and to stop publishing later by registration key.
+The Publisher API (`/api/publishing`) lets you control OPC UA publishing at runtime through HTTP.  
+You can send a `publishednodes.json` payload to dynamically start publishing to a specific MQTT topic, then stop it later using the returned registration key.
 
-- `POST /api/publishing/publishednodes?topic=<topic>[&registrationKey=<key>]` registers and starts publishing for that topic.
-- `DELETE /api/publishing/publishednodes/{registrationKey}` removes one registration and stops topic publishing when the last registration for that topic is removed.
+- `POST /api/publishing/publishednodes?topic=<topic>[&registrationKey=<key>]`  
+  Registers the payload for the topic and starts publishing. If the same topic + payload is already active, it returns `200 OK` and reuses the existing registration; otherwise it returns `202 Accepted`.
+- `DELETE /api/publishing/publishednodes/{registrationKey}`  
+  Removes that registration. Topic publishing is stopped automatically when the last registration for that topic is removed.
 
-The API is available when `EnableMultiTopicPublishing` is enabled. If `MultiTopicPublishingApiKey` is set in settings, requests must include `Authorization: Bearer <key>`.
+Requirements and behavior:
+
+- `EnableMultiTopicPublishing` must be enabled.
+- If `MultiTopicPublishingApiKey` is set, include `Authorization: Bearer <key>`.
+- This API is for MQTT multi-topic publishing. If Kafka mode is enabled, start requests return `409 Conflict`.
+- Responses include runtime details such as `registrationKey`, `topic`, and active registration counts.
 
 ## PublishedNodes.json File Format
 
@@ -148,6 +156,8 @@ The API is available when `EnableMultiTopicPublishing` is enabled. If `MultiTopi
   }
 ]
 ```
+
+This feature was implemented by VDMA.
 
 ## Sub-topics for Configuration from the Cloud
 
